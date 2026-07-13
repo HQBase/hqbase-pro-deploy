@@ -1,0 +1,47 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hqbase-pro",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hqbase-pro",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "MAIL_OBJECTS", "bucket_name": "hqbase-pro-mail" }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "PRO_JOBS", "queue": "hqbase-pro-jobs" },
+      { "binding": "PRO_JOBS_DLQ", "queue": "hqbase-pro-jobs-dlq" }
+    ],
+    "consumers": [
+      {
+        "queue": "hqbase-pro-jobs",
+        "dead_letter_queue": "hqbase-pro-jobs-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3
+      }
+    ]
+  },
+  "triggers": { "crons": ["17 3 * * *"] },
+  "vars": {
+    "CLOUDFLARE_OAUTH_CLIENT_ID": "1c413f324b518b452096929b847e6703",
+    "CLOUDFLARE_OAUTH_RELAY_URL": "https://auth.hqbase.io",
+    "CLOUDFLARE_OAUTH_REDIRECT_URI": "https://auth.hqbase.io/oauth/callback",
+    "HQBASE_APP_VERSION": "0.1.0",
+    "HQBASE_BILLING_URL": "https://billing.hqbase.io",
+    "HQBASE_COMMUNITY_WORKER_NAME": "hqbase",
+    "HQBASE_RELEASE_PUBLIC_KEY": "MCowBQYDK2VwAyEAsVwKniCvpHDwbbnjTPP0SuIIG97cRL+iFBQvay9OrU4=",
+    "HQBASE_RELEASES_URL": "https://billing.hqbase.io/v1/releases",
+    "HQBASE_WORKER_NAME": "hqbase-pro"
+  },
+  "send_email": [{ "name": "MAIL_SENDER" }]
+}

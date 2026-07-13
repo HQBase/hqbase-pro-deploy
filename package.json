@@ -1,0 +1,45 @@
+{
+  "name": "hqbase-pro-deploy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:source": "wrangler deploy",
+    "deploy:dry-run": "wrangler deploy --dry-run",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "code:check": "biome check .",
+    "format": "biome format --write .",
+    "check": "pnpm code:check && pnpm typecheck && pnpm test"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Create new for fresh Pro, or select the existing Community D1 database for an upgrade."
+      },
+      "MAIL_OBJECTS": {
+        "description": "Create new for fresh Pro, or select the existing Community mail R2 bucket for an upgrade."
+      },
+      "PRO_JOBS": {
+        "description": "Queue for Pro maintenance jobs."
+      },
+      "PRO_JOBS_DLQ": {
+        "description": "Dead-letter queue for Pro maintenance jobs that exhaust retries."
+      },
+      "MAIL_SENDER": {
+        "description": "Cloudflare Email Sending binding for the workspace domains."
+      }
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@cloudflare/workers-types": "^5.20260711.1",
+    "@types/node": "^26.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "4.1.10",
+    "wrangler": "^4.110.0"
+  }
+}
