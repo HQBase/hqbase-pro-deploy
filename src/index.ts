@@ -2,11 +2,15 @@ import { buildStartedHtml, errorHtml, htmlResponse, installerHtml } from "./ui";
 
 type Env = {
   HQBASE_WORKER_NAME?: string;
+  HQBASE_BILLING_URL?: string;
   CLOUDFLARE_OAUTH_CLIENT_ID?: string;
   CLOUDFLARE_OAUTH_RELAY_URL?: string;
   CLOUDFLARE_OAUTH_REDIRECT_URI?: string;
 };
-type InstallInput = { licenseKey: string; workerName: string };
+type InstallInput = {
+  licenseKey: string;
+  mode: "fresh" | "community_upgrade" | "recovery";
+};
 type CfEnvelope<T> = {
   success: boolean;
   result: T;
@@ -20,6 +24,8 @@ type OAuthToken = {
 const VERIFIER_COOKIE = "hqb_oauth_verifier";
 const STATE_COOKIE = "hqb_oauth_state";
 const DRAFT_COOKIE = "hqb_install_draft";
+const CLAIM_VERIFIER_COOKIE = "hqb_claim_verifier";
+const CLAIM_STATE_COOKIE = "hqb_claim_state";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -27,17 +33,23 @@ export default {
     try {
       if (url.pathname === "/health")
         return Response.json({ ok: true, service: "hqbase-pro-installer" });
+      if (url.pathname === "/api/install/start" && request.method === "GET")
+        return await startInstallClaim(request, env);
+      if (url.pathname === "/api/install/callback" && request.method === "GET")
+        return await finishInstallClaim(request, env);
       if (url.pathname === "/api/oauth/start" && request.method === "POST")
         return await startOAuth(request, env);
       if (url.pathname === "/api/oauth/callback" && request.method === "GET")
         return await finishOAuth(request, env);
       if (url.pathname !== "/")
         return new Response("Not found", { status: 404 });
-      return htmlResponse(
-        installerHtml({
-          workerName: env.HQBASE_WORKER_NAME ?? "hqbase-pro",
-        }),
-      );
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: "/api/install/start",
+          "cache-control": "no-store",
+        },
+      });
     } catch (error) {
       return installerErrorResponse(
         request,
@@ -61,25 +73,15 @@ export async function startOAuth(
   } else {
     const form = await request.formData();
     const licenseKey = form.get("licenseKey");
-    const workerName = form.get("workerName");
     input = {
       ...(typeof licenseKey === "string" ? { licenseKey } : {}),
-      ...(typeof workerName === "string" ? { workerName } : {}),
+      mode: "recovery",
     };
   }
   const licenseKey = input.licenseKey?.trim().toUpperCase() ?? "";
-  const workerName =
-    input.workerName?.trim() || env.HQBASE_WORKER_NAME || "hqbase-pro";
   const invalidLicense = licenseKey.length < 12;
-  const invalidWorker = !/^[a-z0-9_-]{1,63}$/i.test(workerName);
-  if (invalidLicense || invalidWorker) {
-    const message = "Enter the license and deployed Worker name.";
-    const formMessage =
-      invalidLicense && invalidWorker
-        ? "Enter a valid Polar license key and deployed Worker name."
-        : invalidLicense
-          ? "Enter a valid Polar license key."
-          : "Enter a valid deployed Worker name.";
+  if (invalidLicense) {
+    const message = "Enter a valid Polar license key.";
     if (requestWantsJson(request))
       return Response.json(
         { error: "invalid_input", message },
@@ -87,18 +89,116 @@ export async function startOAuth(
       );
     return htmlResponse(
       installerHtml({
-        workerName,
-        error: formMessage,
+        error: message,
         invalidLicense,
-        invalidWorker,
       }),
       400,
     );
   }
+  return beginCloudflareOAuth(request, env, {
+    licenseKey,
+    mode: "recovery",
+  });
+}
+
+export async function startInstallClaim(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const verifier = randomBase64Url(64);
+  const state = randomBase64Url(32);
+  const billing = new URL("/v1/install/authorize", billingUrl(env));
+  billing.searchParams.set(
+    "callback",
+    `${new URL(request.url).origin}/api/install/callback`,
+  );
+  billing.searchParams.set("state", state);
+  billing.searchParams.set("code_challenge", await sha256Base64Url(verifier));
+  const headers = new Headers({
+    location: billing.toString(),
+    "cache-control": "no-store",
+  });
+  headers.append("set-cookie", secureCookie(CLAIM_VERIFIER_COOKIE, verifier));
+  headers.append("set-cookie", secureCookie(CLAIM_STATE_COOKIE, state));
+  return new Response(null, { status: 303, headers });
+}
+
+export async function finishInstallClaim(
+  request: Request,
+  env: Env,
+  fetcher: typeof fetch = fetch,
+): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.searchParams.get("error")) {
+    return htmlResponse(
+      installerHtml({
+        error:
+          url.searchParams.get("error") === "license_pending"
+            ? "Your Polar license is still being created. Retry automatic setup in a moment, or use recovery."
+            : "The purchase session is missing or expired. Use license recovery to continue.",
+      }),
+      400,
+    );
+  }
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const verifier = cookies.get(CLAIM_VERIFIER_COOKIE) ?? "";
+  const expectedState = cookies.get(CLAIM_STATE_COOKIE) ?? "";
+  const code = url.searchParams.get("code") ?? "";
+  if (
+    !verifier ||
+    !expectedState ||
+    url.searchParams.get("state") !== expectedState ||
+    !code
+  ) {
+    return htmlResponse(
+      installerHtml({
+        error:
+          "The purchase session is invalid or expired. Use license recovery.",
+      }),
+      400,
+    );
+  }
+  const callback = `${url.origin}/api/install/callback`;
+  const response = await fetcher(
+    new URL("/v1/install/token", billingUrl(env)),
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, codeVerifier: verifier, callback }),
+    },
+  );
+  const claim = (await response.json()) as {
+    licenseKey?: string;
+    mode?: "fresh" | "community_upgrade";
+  };
+  if (!response.ok || !claim.licenseKey || !claim.mode) {
+    return htmlResponse(
+      installerHtml({
+        error:
+          "The automatic install claim expired. Use license recovery to continue.",
+      }),
+      400,
+    );
+  }
+  const result = await beginCloudflareOAuth(request, env, {
+    licenseKey: claim.licenseKey,
+    mode: claim.mode,
+  });
+  const headers = new Headers(result.headers);
+  headers.append("set-cookie", secureCookie(CLAIM_VERIFIER_COOKIE, "", 0));
+  headers.append("set-cookie", secureCookie(CLAIM_STATE_COOKIE, "", 0));
+  return new Response(result.body, { status: result.status, headers });
+}
+
+async function beginCloudflareOAuth(
+  request: Request,
+  env: Env,
+  input: InstallInput,
+): Promise<Response> {
   const config = oauthConfig(env);
   const verifier = randomBase64Url(64);
   const state = randomBase64Url(32);
-  const draft = await encryptDraft({ licenseKey, workerName }, verifier);
+  const draft = await encryptDraft(input, verifier);
   const relay = new URL("/oauth/authorize", config.relayUrl);
   relay.searchParams.set(
     "callback",
@@ -224,10 +324,21 @@ export async function finishOAuth(
 
 export async function install(
   input: InstallInput,
-  _env: Env,
+  env: Env,
   accessToken: string,
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
+  const workerName = env.HQBASE_WORKER_NAME?.trim() ?? "";
+  if (!/^[a-z0-9_-]{1,63}$/i.test(workerName)) {
+    return Response.json(
+      {
+        error: "worker_identity_missing",
+        message:
+          "The deployed Worker identity is unavailable. Redeploy the bootstrap and retry.",
+      },
+      { status: 409 },
+    );
+  }
   const headers = {
     authorization: `Bearer ${accessToken}`,
     "content-type": "application/json",
@@ -245,9 +356,7 @@ export async function install(
       { headers },
       fetcher,
     );
-    const script = scripts.find(
-      (candidate) => candidate.id === input.workerName,
-    );
+    const script = scripts.find((candidate) => candidate.id === workerName);
     if (script?.tag) {
       accountId = account.id;
       workerTag = script.tag;
@@ -296,6 +405,8 @@ export async function install(
       body: JSON.stringify({
         HQBASE_PRO_LICENSE_KEY: { value: input.licenseKey, is_secret: true },
         HQBASE_INSTALLATION_ID: { value: installationId, is_secret: false },
+        HQBASE_INSTALL_MODE: { value: input.mode, is_secret: false },
+        HQBASE_WORKER_NAME: { value: workerName, is_secret: false },
       }),
     },
     fetcher,
@@ -311,7 +422,7 @@ export async function install(
   };
   for (const [name, text] of Object.entries(secrets))
     await cf(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${input.workerName}/secrets`,
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}/secrets`,
       {
         method: "PUT",
         headers,
@@ -360,6 +471,10 @@ function oauthConfig(env: Env) {
   if (!clientId || !relayUrl || !redirectUri)
     throw new Error("Cloudflare OAuth is not configured for this installer.");
   return { clientId, relayUrl, redirectUri };
+}
+
+function billingUrl(env: Env): string {
+  return env.HQBASE_BILLING_URL?.trim() || "https://billing.hqbase.io";
 }
 async function encryptDraft(
   input: InstallInput,
