@@ -70,4 +70,17 @@ describe("one-click queue bindings", () => {
       consumers: [],
     });
   });
+
+  it("propagates the Worker name selected by Deploy to Cloudflare", () => {
+    const configured = bootstrapQueueConfig(
+      {
+        name: "hqbase-pro",
+        vars: { HQBASE_WORKER_NAME: "hqbase-pro" },
+        queues: {},
+      },
+      "custom-hqbase-pro",
+    );
+    expect(configured.name).toBe("custom-hqbase-pro");
+    expect(configured.vars.HQBASE_WORKER_NAME).toBe("custom-hqbase-pro");
+  });
 });

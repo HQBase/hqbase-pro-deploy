@@ -1,7 +1,39 @@
 const PRODUCT_STYLES = `
+@font-face {
+  font-family: "Geist Sans";
+  src: url("/fonts/Geist-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Sans";
+  src: url("/fonts/Geist-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Sans";
+  src: url("/fonts/Geist-SemiBold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
-  font-family: Aptos, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   --background: #090a0b;
   --surface: #111214;
@@ -58,7 +90,7 @@ a {
 }
 
 .panel {
-  width: min(100%, 600px);
+  width: min(100%, 896px);
   min-width: 0;
   padding: 28px;
   border: 1px solid var(--border);
@@ -67,14 +99,49 @@ a {
   box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
 }
 
-.eyebrow {
-  margin: 0 0 10px;
+.onboarding {
+  display: grid;
+  gap: 10px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.step.is-upcoming {
+  background: transparent;
   color: var(--subtle);
-  font-size: 12px;
+}
+
+.step-marker {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.step-content h2 {
+  margin: 4px 0 0;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  text-transform: uppercase;
+}
+
+.step-content > p {
+  margin: 6px 0 0;
+  color: var(--muted);
 }
 
 h1 {
@@ -258,7 +325,7 @@ input[aria-invalid="true"] {
 code {
   overflow-wrap: anywhere;
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.9em;
 }
 
@@ -284,10 +351,8 @@ code {
 `;
 
 type InstallerView = {
-  workerName: string;
   error?: string;
   invalidLicense?: boolean;
-  invalidWorker?: boolean;
 };
 
 type ErrorView = {
@@ -296,47 +361,48 @@ type ErrorView = {
 };
 
 export function installerHtml({
-  workerName,
   error,
   invalidLicense = false,
-  invalidWorker = false,
 }: InstallerView): string {
   const errorId = error ? "form-error" : undefined;
   const licenseDescription = ["license-help", invalidLicense && errorId]
     .filter(Boolean)
     .join(" ");
-  const workerDescription = ["worker-help", invalidWorker && errorId]
-    .filter(Boolean)
-    .join(" ");
 
   return documentHtml(
-    "Install HQBase Pro",
+    "Recover HQBase Pro installation",
     `<main class="panel" aria-labelledby="page-title">
-      <p class="eyebrow">HQBase Pro installer</p>
-      <h1 id="page-title">Finish Pro installation</h1>
-      <p class="lede">Your Cloudflare resources are ready. Add your Polar license, then authorize HQBase to finish setup.</p>
-      <form class="stack" method="post" action="/api/oauth/start" id="installer-form">
-        ${
-          error
-            ? `<div class="alert" id="form-error" role="alert"><p>${escapeHtml(error)}</p></div>`
-            : ""
-        }
-        <div class="field">
-          <label class="field-label" for="license-key">Polar license key</label>
-          <input id="license-key" name="licenseKey" type="password" autocomplete="off" required aria-describedby="${licenseDescription}"${invalidLicense ? ' aria-invalid="true" aria-errormessage="form-error" autofocus' : ""}>
-          <p class="field-help" id="license-help">Use the license key from your HQBase Pro purchase.</p>
-        </div>
-        <div class="field">
-          <label class="field-label" for="worker-name">Deployed Worker name</label>
-          <input id="worker-name" name="workerName" value="${escapeHtml(workerName)}" autocomplete="off" required aria-describedby="${workerDescription}"${invalidWorker ? ` aria-invalid="true" aria-errormessage="form-error"${invalidLicense ? "" : " autofocus"}` : ""}>
-          <p class="field-help" id="worker-help">This must match the Worker created by Deploy to Cloudflare.</p>
-        </div>
-        <div class="notice" role="note"><p>Cloudflare will show the accounts, zones, and setup permissions before approval. The temporary grant is revoked after workspace setup.</p></div>
-        <div class="actions">
-          <button class="button" type="submit" id="submit-button">Authorize Cloudflare &amp; install</button>
-        </div>
-        <p class="form-status" id="form-status" role="status" aria-live="polite" hidden></p>
-      </form>
+      <h1 id="page-title">Resume Pro installation</h1>
+      <p class="lede">Automatic purchase handoff could not continue. Retry it first; use the license field only for an older purchase or expired session.</p>
+      <ol class="onboarding" aria-label="Installation recovery">
+        <li class="step">
+          <div class="step-marker" aria-hidden="true">1</div>
+          <div class="step-content">
+            <h2>Resume automatic setup</h2>
+            <p>Return to Billing to claim the verified purchase without copying a key.</p>
+            ${error ? `<div class="alert section-actions" id="form-error" role="alert"><p>${escapeHtml(error)}</p></div>` : ""}
+            <div class="actions section-actions"><a class="button" href="/api/install/start">Retry automatic setup</a></div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-marker" aria-hidden="true">2</div>
+          <div class="step-content">
+            <h2>License recovery</h2>
+            <p>For an older purchase, retrieve the license from Polar and continue manually.</p>
+            <form class="stack" method="post" action="/api/oauth/start" id="installer-form">
+              <div class="field">
+                <label class="field-label" for="license-key">Polar license key</label>
+                <input id="license-key" name="licenseKey" type="password" autocomplete="off" required aria-describedby="${licenseDescription}"${invalidLicense ? ' aria-invalid="true" aria-errormessage="form-error" autofocus' : ""}>
+                <p class="field-help" id="license-help">The Worker name is detected from this deployment.</p>
+              </div>
+              <div class="notice" role="note"><p>Cloudflare will show the accounts, zones, and setup permissions before approval. The temporary grant is revoked after workspace setup.</p></div>
+              <div class="actions"><button class="button button-outline" type="submit" id="submit-button">Authorize Cloudflare &amp; recover</button></div>
+              <p class="form-status" id="form-status" role="status" aria-live="polite" hidden></p>
+            </form>
+          </div>
+        </li>
+        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">3</div><div class="step-content"><h2>Build and configure</h2><p>HQBase installs the licensed release, then continues with workspace setup.</p></div></li>
+      </ol>
     </main>
     <script>
       const form = document.querySelector("#installer-form");
@@ -358,7 +424,6 @@ export function buildStartedHtml(buildId: string): string {
   return documentHtml(
     "HQBase Pro build started",
     `<main class="panel" aria-labelledby="page-title">
-      <p class="eyebrow">HQBase Pro installer</p>
       <h1 id="page-title">Your licensed build has started</h1>
       <p class="lede">Cloudflare accepted the build request. HQBase Pro is not ready until that build finishes.</p>
       <section class="status-card" aria-labelledby="build-status">
@@ -366,9 +431,26 @@ export function buildStartedHtml(buildId: string): string {
         <p>Build <code>${escapeHtml(buildId)}</code> is preparing your licensed release. The delegated Cloudflare grant will finish domain and email setup, then revoke itself.</p>
       </section>
       <div class="actions section-actions">
-        <a class="button button-outline" href="/">Open Worker again</a>
+        <a class="button button-outline" href="/health">Check deployment status</a>
       </div>
-    </main>`,
+      <p class="form-status" id="build-progress" role="status" aria-live="polite">Waiting for the licensed Worker…</p>
+    </main>
+    <script>
+      const progress = document.querySelector("#build-progress");
+      const poll = async () => {
+        try {
+          const response = await fetch("/health", { cache: "no-store" });
+          const status = await response.json();
+          if (status.service !== "hqbase-pro-installer") {
+            location.replace("/setup");
+            return;
+          }
+        } catch {}
+        progress.textContent = "Build still in progress. Checking again…";
+        setTimeout(poll, 5000);
+      };
+      setTimeout(poll, 5000);
+    </script>`,
   );
 }
 
@@ -376,7 +458,6 @@ export function errorHtml({ title, message }: ErrorView): string {
   return documentHtml(
     `${title} · HQBase Pro`,
     `<main class="panel" aria-labelledby="page-title">
-      <p class="eyebrow">HQBase Pro installer</p>
       <h1 id="page-title">${escapeHtml(title)}</h1>
       <div class="alert section-actions" role="alert"><p>${escapeHtml(message)}</p></div>
       <div class="actions section-actions">
@@ -418,6 +499,7 @@ function documentHtml(title: string, content: string): string {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
+    <link rel="preload" href="/fonts/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <title>${escapeHtml(title)}</title>
     <style>${PRODUCT_STYLES}</style>
   </head>

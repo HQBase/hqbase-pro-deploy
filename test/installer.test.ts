@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import worker, { finishOAuth, install, startOAuth } from "../src/index";
+import worker, {
+  finishInstallClaim,
+  finishOAuth,
+  install,
+  startInstallClaim,
+  startOAuth,
+} from "../src/index";
 
 const oauthEnv = {
+  HQBASE_WORKER_NAME: "hqbase-pro",
+  HQBASE_BILLING_URL: "https://billing.hqbase.io",
   CLOUDFLARE_OAUTH_CLIENT_ID: "client",
   CLOUDFLARE_OAUTH_RELAY_URL: "https://auth.hqbase.io",
   CLOUDFLARE_OAUTH_REDIRECT_URI: "https://auth.hqbase.io/oauth/callback",
@@ -14,7 +22,6 @@ async function oauthSession() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         licenseKey: "HQB_TEST_LICENSE_KEY",
-        workerName: "hqbase-pro",
       }),
     }),
     oauthEnv,
@@ -72,20 +79,64 @@ function installationFetcher(mode: "success" | "worker" | "build") {
 }
 
 describe("Pro installer", () => {
+  it("redirects directly through a purchase-bound install claim", async () => {
+    const started = await startInstallClaim(
+      new Request("https://custom-pro.workers.dev/api/install/start"),
+      oauthEnv,
+    );
+    expect(started.status).toBe(303);
+    const billingLocation = new URL(started.headers.get("location") ?? "");
+    expect(billingLocation.origin).toBe("https://billing.hqbase.io");
+    expect(billingLocation.pathname).toBe("/v1/install/authorize");
+    expect(billingLocation.searchParams.get("callback")).toBe(
+      "https://custom-pro.workers.dev/api/install/callback",
+    );
+
+    const headers = started.headers as Headers & { getSetCookie(): string[] };
+    const cookie = headers
+      .getSetCookie()
+      .map((value) => value.split(";", 1)[0])
+      .join("; ");
+    const state = billingLocation.searchParams.get("state");
+    const finished = await finishInstallClaim(
+      new Request(
+        `https://custom-pro.workers.dev/api/install/callback?code=claim-code-123456&state=${state}`,
+        { headers: { cookie } },
+      ),
+      oauthEnv,
+      vi.fn(async (input: RequestInfo | URL) => {
+        expect(String(input)).toBe(
+          "https://billing.hqbase.io/v1/install/token",
+        );
+        return Response.json({
+          licenseKey: "HQB_AUTOMATIC_LICENSE",
+          mode: "fresh",
+        });
+      }) as typeof fetch,
+    );
+    expect(finished.status).toBe(303);
+    const cloudflareLocation = finished.headers.get("location") ?? "";
+    expect(cloudflareLocation).toContain("auth.hqbase.io/oauth/authorize");
+    expect(cloudflareLocation).not.toContain("HQB_AUTOMATIC_LICENSE");
+    expect(finished.headers.get("set-cookie")).toContain("hqb_install_draft=");
+  });
+
   it("renders the shared product typography and accessible installer contract", async () => {
     const response = await worker.fetch(
-      new Request("https://installer.test/"),
-      {
-        HQBASE_WORKER_NAME: 'hqbase-pro"><script>unsafe</script>',
-      },
+      new Request(
+        "https://installer.test/api/install/callback?error=install_session_expired",
+      ),
+      oauthEnv,
     );
     const html = await response.text();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(html).toContain(
-      "font-family: Aptos, ui-sans-serif, system-ui, sans-serif;",
+      'font-family: "Geist Sans", ui-sans-serif, system-ui, sans-serif;',
     );
+    expect(html).toContain('font-family: "Geist Mono", ui-monospace');
+    expect(html).toContain('href="/fonts/Geist-Regular.woff2"');
     expect(html).toMatch(
       /button,\s+input,\s+select,\s+textarea \{\s+font: inherit;/,
     );
@@ -93,15 +144,15 @@ describe("Pro installer", () => {
     expect(html).toContain("min-width: 320px");
     expect(html).toContain("@media (max-width: 480px)");
     expect(html).toContain("min-height: 44px");
+    expect(html).not.toContain("eyebrow");
+    expect(html).not.toContain("HQBase Pro installer");
     expect(html).not.toContain("Inter");
     expect(html).toContain('<label class="field-label" for="license-key">');
     expect(html).toContain('aria-describedby="license-help"');
     expect(html).toContain('role="status" aria-live="polite"');
     expect(html).toContain('button.textContent = "Opening Cloudflare…"');
-    expect(html).toContain(
-      'value="hqbase-pro&quot;&gt;&lt;script&gt;unsafe&lt;/script&gt;"',
-    );
-    expect(html).not.toContain("<script>unsafe</script>");
+    expect(html).not.toContain('name="workerName"');
+    expect(html).toContain("The Worker name is detected from this deployment.");
   });
 
   it("returns associated form errors for invalid browser input", async () => {
@@ -111,7 +162,6 @@ describe("Pro installer", () => {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           licenseKey: "short",
-          workerName: "bad worker",
         }),
       }),
       oauthEnv,
@@ -124,9 +174,6 @@ describe("Pro installer", () => {
     expect(html).toContain(
       'aria-describedby="license-help form-error" aria-invalid="true"',
     );
-    expect(html).toContain(
-      'aria-describedby="worker-help form-error" aria-invalid="true"',
-    );
     expect(html).not.toContain('value="short"');
   });
 
@@ -135,13 +182,13 @@ describe("Pro installer", () => {
       new Request("https://installer.test/api/oauth/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ licenseKey: "short", workerName: "hqbase-pro" }),
+        body: JSON.stringify({ licenseKey: "short" }),
       }),
       oauthEnv,
     );
     await expect(invalidInput.json()).resolves.toEqual({
       error: "invalid_input",
-      message: "Enter the license and deployed Worker name.",
+      message: "Enter a valid Polar license key.",
     });
 
     const invalidCallback = await worker.fetch(
@@ -258,8 +305,8 @@ describe("Pro installer", () => {
       },
     );
     const response = await install(
-      { licenseKey: "HQB_TEST_LICENSE_KEY", workerName: "hqbase-pro" },
-      {},
+      { licenseKey: "HQB_TEST_LICENSE_KEY", mode: "fresh" },
+      { HQBASE_WORKER_NAME: "hqbase-pro" },
       "oauth-access-token",
       fetcher as typeof fetch,
     );
@@ -278,6 +325,8 @@ describe("Pro installer", () => {
         value: "HQB_TEST_LICENSE_KEY",
         is_secret: true,
       },
+      HQBASE_INSTALL_MODE: { value: "fresh", is_secret: false },
+      HQBASE_WORKER_NAME: { value: "hqbase-pro", is_secret: false },
     });
     const build = requests.find((request) => request.url.endsWith("/builds"));
     expect(JSON.parse(String(build?.init?.body))).toEqual({ branch: "main" });
@@ -293,7 +342,6 @@ describe("Pro installer", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           licenseKey: "HQB_TEST_LICENSE_KEY",
-          workerName: "hqbase-pro",
         }),
       }),
       {

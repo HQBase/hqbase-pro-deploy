@@ -24,7 +24,7 @@ export async function deploy() {
     const config = JSON.parse(readFileSync(configFile, "utf8"));
     writeFileSync(
       bootstrapConfigFile,
-      `${JSON.stringify(bootstrapQueueConfig(config), null, 2)}\n`,
+      `${JSON.stringify(bootstrapQueueConfig(config, process.env.WRANGLER_CI_OVERRIDE_NAME), null, 2)}\n`,
     );
     try {
       run(
@@ -82,13 +82,23 @@ export async function deploy() {
     const config = JSON.parse(
       readFileSync(resolve(root, "wrangler.jsonc"), "utf8"),
     );
+    const deployedWorkerName =
+      process.env.WRANGLER_CI_OVERRIDE_NAME ||
+      process.env.HQBASE_WORKER_NAME ||
+      config.name;
+    config.name = deployedWorkerName;
     config.main = "worker/index.ts";
     config.assets = {
       directory: "./dist",
       binding: "ASSETS",
       not_found_handling: "single-page-application",
     };
-    config.vars = { ...config.vars, HQBASE_APP_VERSION: manifest.version };
+    config.vars = {
+      ...config.vars,
+      HQBASE_APP_VERSION: manifest.version,
+      HQBASE_WORKER_NAME: deployedWorkerName,
+      HQBASE_INSTALL_MODE: process.env.HQBASE_INSTALL_MODE || "recovery",
+    };
     delete config.secrets;
     writeFileSync(
       resolve(source, "wrangler.jsonc"),
@@ -108,9 +118,12 @@ export async function deploy() {
   }
 }
 
-export function bootstrapQueueConfig(config) {
+export function bootstrapQueueConfig(config, deployedWorkerName) {
+  const workerName = deployedWorkerName || config.name;
   return {
     ...config,
+    name: workerName,
+    vars: { ...config.vars, HQBASE_WORKER_NAME: workerName },
     queues: {
       ...config.queues,
       // The installer has no queue() handler. The licensed release attaches
