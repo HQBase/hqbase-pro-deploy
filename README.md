@@ -14,11 +14,9 @@ the licensed build. Pro uses that grant for initial domain/email setup and then 
 Customers do not create or paste API tokens, license keys, or Worker names during the normal flow.
 Manual license entry remains available only for old purchases and interrupted-session recovery.
 
-Community upgrades do not deploy this bootstrap beside Community. An authenticated Community owner
-starts the purchase in the existing workspace, which verifies and backs up its resources and uploads
-the signed Pro release as a new version of that same Worker service. This bootstrap refuses
-`community_upgrade` claims so it cannot rotate the existing authentication secret or leave a second
-permanent Worker behind.
+Community upgrades do not use this bootstrap. They begin and complete inside the existing Community
+workspace. Billing issues this installer only fresh-install claims; every other claim mode fails as
+invalid before Cloudflare authorization.
 
 HQBase Pro itself is governed by the HQBase Commercial Source License supplied with the licensed
 release. This bootstrap is MIT licensed.

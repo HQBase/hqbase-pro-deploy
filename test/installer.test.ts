@@ -121,6 +121,38 @@ describe("Pro installer", () => {
     expect(finished.headers.get("set-cookie")).toContain("hqb_install_draft=");
   });
 
+  it("rejects every non-fresh purchase claim before Cloudflare authorization", async () => {
+    const started = await startInstallClaim(
+      new Request("https://custom-pro.workers.dev/api/install/start"),
+      oauthEnv,
+    );
+    const billingLocation = new URL(started.headers.get("location") ?? "");
+    const headers = started.headers as Headers & { getSetCookie(): string[] };
+    const cookie = headers
+      .getSetCookie()
+      .map((value) => value.split(";", 1)[0])
+      .join("; ");
+    const state = billingLocation.searchParams.get("state");
+    const finished = await finishInstallClaim(
+      new Request(
+        `https://custom-pro.workers.dev/api/install/callback?code=claim-code-123456&state=${state}`,
+        { headers: { cookie } },
+      ),
+      oauthEnv,
+      vi.fn(async () =>
+        Response.json({
+          licenseKey: "HQB_AUTOMATIC_LICENSE",
+          mode: "unsupported",
+        }),
+      ) as typeof fetch,
+    );
+    expect(finished.status).toBe(400);
+    expect(await finished.text()).toContain(
+      "fresh-install claim is invalid or expired",
+    );
+    expect(finished.headers.get("location")).toBeNull();
+  });
+
   it("renders the shared product typography and accessible installer contract", async () => {
     const response = await worker.fetch(
       new Request(
@@ -333,21 +365,6 @@ describe("Pro installer", () => {
     expect(
       requests.filter((request) => request.url.endsWith("/secrets")),
     ).toHaveLength(7);
-  });
-
-  it("refuses a separate Community-upgrade deployment before touching Cloudflare", async () => {
-    const fetcher = vi.fn();
-    const response = await install(
-      { licenseKey: "HQB_TEST_LICENSE_KEY", mode: "community_upgrade" },
-      { HQBASE_WORKER_NAME: "hqbase-pro" },
-      "oauth-access-token",
-      fetcher as typeof fetch,
-    );
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "community_upgrade_moved",
-    });
-    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("starts PKCE OAuth without putting the license in the redirect", async () => {
