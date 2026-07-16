@@ -18,10 +18,10 @@
   "cloudflare": {
     "bindings": {
       "DB": {
-        "description": "Create new for fresh Pro, or select the existing Community D1 database for an upgrade."
+        "description": "Create a new D1 database for a fresh Pro workspace. Community upgrades start inside the existing workspace."
       },
       "MAIL_OBJECTS": {
-        "description": "Create new for fresh Pro, or select the existing Community mail R2 bucket for an upgrade."
+        "description": "Create a new R2 bucket for a fresh Pro workspace. Community upgrades preserve their existing bucket automatically."
       },
       "PRO_JOBS": {
         "description": "Queue for Pro maintenance jobs."

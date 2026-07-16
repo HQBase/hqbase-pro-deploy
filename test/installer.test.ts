@@ -335,6 +335,21 @@ describe("Pro installer", () => {
     ).toHaveLength(7);
   });
 
+  it("refuses a separate Community-upgrade deployment before touching Cloudflare", async () => {
+    const fetcher = vi.fn();
+    const response = await install(
+      { licenseKey: "HQB_TEST_LICENSE_KEY", mode: "community_upgrade" },
+      { HQBASE_WORKER_NAME: "hqbase-pro" },
+      "oauth-access-token",
+      fetcher as typeof fetch,
+    );
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "community_upgrade_moved",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("starts PKCE OAuth without putting the license in the redirect", async () => {
     const response = await startOAuth(
       new Request("https://installer.test/api/oauth/start", {

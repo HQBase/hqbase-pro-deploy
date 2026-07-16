@@ -180,6 +180,15 @@ export async function finishInstallClaim(
       400,
     );
   }
+  if (claim.mode === "community_upgrade") {
+    return htmlResponse(
+      installerHtml({
+        error:
+          "Community upgrades now continue in the existing workspace. Return to Community and resume the in-place upgrade.",
+      }),
+      409,
+    );
+  }
   const result = await beginCloudflareOAuth(request, env, {
     licenseKey: claim.licenseKey,
     mode: claim.mode,
@@ -328,6 +337,16 @@ export async function install(
   accessToken: string,
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
+  if (input.mode === "community_upgrade") {
+    return Response.json(
+      {
+        error: "community_upgrade_moved",
+        message:
+          "Return to the existing Community workspace to authorize and resume the in-place upgrade.",
+      },
+      { status: 409 },
+    );
+  }
   const workerName = env.HQBASE_WORKER_NAME?.trim() ?? "";
   if (!/^[a-z0-9_-]{1,63}$/i.test(workerName)) {
     return Response.json(
