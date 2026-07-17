@@ -72,7 +72,7 @@ function installationFetcher(mode: "success" | "worker" | "build") {
     if (url.endsWith("/builds"))
       return Response.json({
         success: true,
-        result: { build_uuid: "build<unsafe>", status: "queued" },
+        result: { build_uuid: "build-unsafe", status: "queued" },
       });
     return Response.json({ success: true, result: {} });
   });
@@ -147,22 +147,20 @@ describe("Pro installer", () => {
       ) as typeof fetch,
     );
     expect(finished.status).toBe(400);
-    expect(await finished.text()).toContain(
-      "fresh-install claim is invalid or expired",
-    );
+    const html = await finished.text();
+    expect(html).toContain("fresh-install claim is invalid or expired");
     expect(finished.headers.get("location")).toBeNull();
+    expect(html).not.toContain('name="licenseKey"');
   });
 
   it("renders the shared product typography and accessible installer contract", async () => {
     const response = await worker.fetch(
-      new Request(
-        "https://installer.test/api/install/callback?error=install_session_expired",
-      ),
+      new Request("https://installer.test/recover"),
       oauthEnv,
     );
     const html = await response.text();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(html).toContain(
       'font-family: "Geist Sans", ui-sans-serif, system-ui, sans-serif;',
@@ -289,23 +287,66 @@ describe("Pro installer", () => {
     );
   });
 
-  it("renders an escaped queued-build confirmation without claiming completion", async () => {
+  it("redirects a queued build to resumable progress without claiming completion", async () => {
     const session = await oauthSession();
     const response = await finishOAuth(
       callbackRequest(session),
       oauthEnv,
       installationFetcher("success") as typeof fetch,
     );
-    const html = await response.text();
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/install/progress");
+    expect(response.headers.get("set-cookie")).toContain(
+      "hqb_build_progress=build-unsafe",
+    );
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
 
-    expect(response.status).toBe(202);
+    const progress = await worker.fetch(
+      new Request("https://installer.test/install/progress", {
+        headers: { cookie: "hqb_build_progress=build-unsafe" },
+      }),
+      oauthEnv,
+    );
+    const html = await progress.text();
+    expect(progress.status).toBe(200);
     expect(html).toContain("Your licensed build has started");
     expect(html).toContain(
       "HQBase Pro is not ready until that build finishes.",
     );
-    expect(html).toContain("build&lt;unsafe&gt;");
-    expect(html).not.toContain("build<unsafe>");
-    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(html).toContain("build-unsafe");
+    expect(html).toContain('id="check-status"');
+    expect(html).not.toContain('href="/health"');
+    expect(html).toContain('fetch("/api/health?handoff=" + Date.now()');
+    expect(html).toContain(
+      'status.ok === true && status.service === "hqbase-pro"',
+    );
+    expect(html).toContain('location.replace("/setup")');
+  });
+
+  it("resumes queued-build progress instead of redeeming the claim again", async () => {
+    const response = await worker.fetch(
+      new Request("https://installer.test/", {
+        headers: { cookie: "hqb_build_progress=build-123" },
+      }),
+      oauthEnv,
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/install/progress");
+  });
+
+  it("uses the same no-store health path as the licensed Pro runtime", async () => {
+    const response = await worker.fetch(
+      new Request("https://installer.test/api/health"),
+      oauthEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: "hqbase-pro-installer",
+    });
   });
 
   it("configures masked build state, runtime secrets, and a production build", async () => {

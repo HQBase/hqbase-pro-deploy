@@ -1,4 +1,4 @@
-import { buildStartedHtml, errorHtml, htmlResponse, installerHtml } from "./ui";
+import { buildStartedHtml, errorHtml, htmlResponse, recoveryHtml } from "./ui";
 
 type Env = {
   HQBASE_WORKER_NAME?: string;
@@ -26,13 +26,21 @@ const STATE_COOKIE = "hqb_oauth_state";
 const DRAFT_COOKIE = "hqb_install_draft";
 const CLAIM_VERIFIER_COOKIE = "hqb_claim_verifier";
 const CLAIM_STATE_COOKIE = "hqb_claim_state";
+const PROGRESS_COOKIE = "hqb_build_progress";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/health")
-        return Response.json({ ok: true, service: "hqbase-pro-installer" });
+      if (url.pathname === "/health" || url.pathname === "/api/health")
+        return Response.json(
+          { ok: true, service: "hqbase-pro-installer" },
+          { headers: { "cache-control": "no-store" } },
+        );
+      if (url.pathname === "/recover" && request.method === "GET")
+        return htmlResponse(recoveryHtml());
+      if (url.pathname === "/install/progress" && request.method === "GET")
+        return progressResponse(request);
       if (url.pathname === "/api/install/start" && request.method === "GET")
         return await startInstallClaim(request, env);
       if (url.pathname === "/api/install/callback" && request.method === "GET")
@@ -43,10 +51,13 @@ export default {
         return await finishOAuth(request, env);
       if (url.pathname !== "/")
         return new Response("Not found", { status: 404 });
+      const progressBuildId = readProgressBuildId(request);
       return new Response(null, {
         status: 303,
         headers: {
-          location: "/api/install/start",
+          location: progressBuildId
+            ? "/install/progress"
+            : "/api/install/start",
           "cache-control": "no-store",
         },
       });
@@ -88,7 +99,7 @@ export async function startOAuth(
         { status: 400 },
       );
     return htmlResponse(
-      installerHtml({
+      recoveryHtml({
         error: message,
         invalidLicense,
       }),
@@ -130,14 +141,10 @@ export async function finishInstallClaim(
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.searchParams.get("error")) {
-    return htmlResponse(
-      installerHtml({
-        error:
-          url.searchParams.get("error") === "license_pending"
-            ? "Your Polar license is still being created. Retry automatic setup in a moment, or use recovery."
-            : "The purchase session is missing or expired. Use license recovery to continue.",
-      }),
-      400,
+    return installClaimErrorResponse(
+      url.searchParams.get("error") === "license_pending"
+        ? "Your Polar license is still being created. Try the purchase handoff again in a moment."
+        : "The purchase session is missing or expired. Start the purchase handoff again.",
     );
   }
   const cookies = parseCookies(request.headers.get("cookie"));
@@ -150,12 +157,8 @@ export async function finishInstallClaim(
     url.searchParams.get("state") !== expectedState ||
     !code
   ) {
-    return htmlResponse(
-      installerHtml({
-        error:
-          "The purchase session is invalid or expired. Use license recovery.",
-      }),
-      400,
+    return installClaimErrorResponse(
+      "The purchase session is invalid or expired. Start the purchase handoff again.",
     );
   }
   const callback = `${url.origin}/api/install/callback`;
@@ -172,12 +175,8 @@ export async function finishInstallClaim(
     mode?: string;
   };
   if (!response.ok || !claim.licenseKey || claim.mode !== "fresh") {
-    return htmlResponse(
-      installerHtml({
-        error:
-          "The fresh-install claim is invalid or expired. Use license recovery to continue.",
-      }),
-      400,
+    return installClaimErrorResponse(
+      "The fresh-install claim is invalid or expired. Start the purchase handoff again.",
     );
   }
   const result = await beginCloudflareOAuth(request, env, {
@@ -316,10 +315,55 @@ export async function finishOAuth(
     );
   }
   const data = (await result.json()) as { buildId: string };
-  const headers = new Headers();
+  const headers = new Headers({
+    location: "/install/progress",
+    "cache-control": "no-store",
+  });
   for (const name of [VERIFIER_COOKIE, STATE_COOKIE, DRAFT_COOKIE])
     headers.append("set-cookie", secureCookie(name, "", 0));
-  return htmlResponse(buildStartedHtml(data.buildId), 202, headers);
+  headers.append(
+    "set-cookie",
+    secureCookie(PROGRESS_COOKIE, data.buildId, 3600),
+  );
+  return new Response(null, { status: 303, headers });
+}
+
+function progressResponse(request: Request): Response {
+  const buildId = readProgressBuildId(request);
+  if (buildId) return htmlResponse(buildStartedHtml(buildId));
+  return htmlResponse(
+    errorHtml({
+      title: "Build progress session expired",
+      message:
+        "This browser no longer has the build progress marker. If the licensed Worker is already active, open this workspace again; otherwise restart the purchase handoff.",
+      primaryHref: "/api/install/start",
+      primaryLabel: "Restart purchase handoff",
+      secondaryHref: "/recover",
+      secondaryLabel: "Recover an older purchase",
+    }),
+    410,
+  );
+}
+
+function readProgressBuildId(request: Request): string {
+  const value =
+    parseCookies(request.headers.get("cookie")).get(PROGRESS_COOKIE)?.trim() ??
+    "";
+  return /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : "";
+}
+
+function installClaimErrorResponse(message: string): Response {
+  return htmlResponse(
+    errorHtml({
+      title: "Purchase handoff could not continue",
+      message,
+      primaryHref: "/api/install/start",
+      primaryLabel: "Try purchase handoff again",
+      secondaryHref: "/recover",
+      secondaryLabel: "Recover an older purchase",
+    }),
+    400,
+  );
 }
 
 export async function install(

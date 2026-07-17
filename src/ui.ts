@@ -350,7 +350,7 @@ code {
 }
 `;
 
-type InstallerView = {
+type RecoveryView = {
   error?: string;
   invalidLicense?: boolean;
 };
@@ -358,12 +358,16 @@ type InstallerView = {
 type ErrorView = {
   title: string;
   message: string;
+  primaryHref?: string;
+  primaryLabel?: string;
+  secondaryHref?: string;
+  secondaryLabel?: string;
 };
 
-export function installerHtml({
+export function recoveryHtml({
   error,
   invalidLicense = false,
-}: InstallerView): string {
+}: RecoveryView = {}): string {
   const errorId = error ? "form-error" : undefined;
   const licenseDescription = ["license-help", invalidLicense && errorId]
     .filter(Boolean)
@@ -372,23 +376,15 @@ export function installerHtml({
   return documentHtml(
     "Recover HQBase Pro installation",
     `<main class="panel" aria-labelledby="page-title">
-      <h1 id="page-title">Resume Pro installation</h1>
-      <p class="lede">Automatic purchase handoff could not continue. Retry it first; use the license field only for an older purchase or expired session.</p>
-      <ol class="onboarding" aria-label="Installation recovery">
+      <h1 id="page-title">Recover an older Pro purchase</h1>
+      <p class="lede">Use this explicit recovery path only when an older purchase cannot use the automatic purchase handoff.</p>
+      <ol class="onboarding" aria-label="License recovery">
         <li class="step">
           <div class="step-marker" aria-hidden="true">1</div>
           <div class="step-content">
-            <h2>Resume automatic setup</h2>
-            <p>Return to Billing to claim the verified purchase without copying a key.</p>
+            <h2>Enter the existing license</h2>
+            <p>Retrieve the license from Polar, then authorize Cloudflare to finish this installation.</p>
             ${error ? `<div class="alert section-actions" id="form-error" role="alert"><p>${escapeHtml(error)}</p></div>` : ""}
-            <div class="actions section-actions"><a class="button" href="/api/install/start">Retry automatic setup</a></div>
-          </div>
-        </li>
-        <li class="step">
-          <div class="step-marker" aria-hidden="true">2</div>
-          <div class="step-content">
-            <h2>License recovery</h2>
-            <p>For an older purchase, retrieve the license from Polar and continue manually.</p>
             <form class="stack" method="post" action="/api/oauth/start" id="installer-form">
               <div class="field">
                 <label class="field-label" for="license-key">Polar license key</label>
@@ -401,7 +397,7 @@ export function installerHtml({
             </form>
           </div>
         </li>
-        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">3</div><div class="step-content"><h2>Build and configure</h2><p>HQBase installs the licensed release, then continues with workspace setup.</p></div></li>
+        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">2</div><div class="step-content"><h2>Build and configure</h2><p>HQBase installs the licensed release, then continues with workspace setup.</p></div></li>
       </ol>
     </main>
     <script>
@@ -431,37 +427,68 @@ export function buildStartedHtml(buildId: string): string {
         <p>Build <code>${escapeHtml(buildId)}</code> is preparing your licensed release. The delegated Cloudflare grant will finish domain and email setup, then revoke itself.</p>
       </section>
       <div class="actions section-actions">
-        <a class="button button-outline" href="/health">Check deployment status</a>
+        <button class="button button-outline" type="button" id="check-status">Check deployment status</button>
       </div>
       <p class="form-status" id="build-progress" role="status" aria-live="polite">Waiting for the licensed Worker…</p>
     </main>
     <script>
       const progress = document.querySelector("#build-progress");
-      const poll = async () => {
+      const checkButton = document.querySelector("#check-status");
+      let redirecting = false;
+      let checking = false;
+      let timer;
+      const scheduleCheck = () => {
+        clearTimeout(timer);
+        timer = setTimeout(check, 5000);
+      };
+      const check = async (manual = false) => {
+        if (redirecting || checking) return;
+        checking = true;
+        clearTimeout(timer);
+        if (manual) {
+          checkButton.disabled = true;
+          progress.textContent = "Checking the licensed Worker…";
+        }
         try {
-          const response = await fetch("/health", { cache: "no-store" });
+          const response = await fetch("/api/health?handoff=" + Date.now(), {
+            cache: "no-store",
+            headers: { accept: "application/json" }
+          });
           const status = await response.json();
-          if (status.service !== "hqbase-pro-installer") {
+          if (response.ok && status.ok === true && status.service === "hqbase-pro") {
+            redirecting = true;
+            progress.textContent = "Licensed Worker ready. Opening workspace setup…";
             location.replace("/setup");
             return;
           }
         } catch {}
         progress.textContent = "Build still in progress. Checking again…";
-        setTimeout(poll, 5000);
+        checking = false;
+        checkButton.disabled = false;
+        scheduleCheck();
       };
-      setTimeout(poll, 5000);
+      checkButton.addEventListener("click", () => check(true));
+      timer = setTimeout(check, 2000);
     </script>`,
   );
 }
 
-export function errorHtml({ title, message }: ErrorView): string {
+export function errorHtml({
+  title,
+  message,
+  primaryHref = "/",
+  primaryLabel = "Back to installer",
+  secondaryHref,
+  secondaryLabel,
+}: ErrorView): string {
   return documentHtml(
     `${title} · HQBase Pro`,
     `<main class="panel" aria-labelledby="page-title">
       <h1 id="page-title">${escapeHtml(title)}</h1>
       <div class="alert section-actions" role="alert"><p>${escapeHtml(message)}</p></div>
       <div class="actions section-actions">
-        <a class="button button-outline" href="/">Back to installer</a>
+        <a class="button" href="${escapeHtml(primaryHref)}">${escapeHtml(primaryLabel)}</a>
+        ${secondaryHref && secondaryLabel ? `<a class="button button-outline" href="${escapeHtml(secondaryHref)}">${escapeHtml(secondaryLabel)}</a>` : ""}
       </div>
     </main>`,
   );
