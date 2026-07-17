@@ -66,9 +66,7 @@ body {
   min-height: 100vh;
   min-height: 100svh;
   margin: 0;
-  padding: 32px 16px;
-  display: grid;
-  place-items: center;
+  padding: 0 16px 32px;
   background: var(--background);
   color: var(--text);
   font-size: 15px;
@@ -90,13 +88,49 @@ a {
 }
 
 .panel {
-  width: min(100%, 896px);
+  width: 100%;
   min-width: 0;
-  padding: 28px;
+}
+
+.page-shell {
+  width: min(100%, 896px);
+  margin: 0 auto;
+}
+
+.product-header {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 22%);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.page-progress {
+  color: var(--muted);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
 }
 
 .onboarding {
@@ -114,7 +148,23 @@ a {
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: var(--surface);
+}
+
+.step.is-current {
+  border-color: var(--border-strong);
   background: var(--surface-raised);
+}
+
+.step.is-failed {
+  border-color: var(--danger-border);
+  background: var(--danger-surface);
+}
+
+.step.is-complete .step-marker {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--background);
 }
 
 .step.is-upcoming {
@@ -137,6 +187,21 @@ a {
   margin: 4px 0 0;
   font-size: 16px;
   font-weight: 600;
+}
+
+.step-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.step-status {
+  color: var(--muted);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .step-content > p {
@@ -292,36 +357,6 @@ input[aria-invalid="true"] {
   font-size: 13px;
 }
 
-.status-card {
-  margin-top: 24px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-raised);
-}
-
-.status-label {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.status-label::before {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #86b898;
-  content: "";
-}
-
-.status-card p {
-  margin: 10px 0 0;
-  color: var(--muted);
-}
-
 code {
   overflow-wrap: anywhere;
   color: var(--text);
@@ -331,12 +366,7 @@ code {
 
 @media (max-width: 480px) {
   body {
-    padding: 16px;
-    place-items: start center;
-  }
-
-  .panel {
-    padding: 20px;
+    padding: 0 16px 24px;
   }
 
   .stack {
@@ -379,10 +409,10 @@ export function recoveryHtml({
       <h1 id="page-title">Recover an older Pro purchase</h1>
       <p class="lede">Use this explicit recovery path only when an older purchase cannot use the automatic purchase handoff.</p>
       <ol class="onboarding" aria-label="License recovery">
-        <li class="step">
+        <li class="step is-current">
           <div class="step-marker" aria-hidden="true">1</div>
           <div class="step-content">
-            <h2>Enter the existing license</h2>
+            <div class="step-heading"><h2>Enter the existing license</h2><span class="step-status">Current</span></div>
             <p>Retrieve the license from Polar, then authorize Cloudflare to finish this installation.</p>
             ${error ? `<div class="alert section-actions" id="form-error" role="alert"><p>${escapeHtml(error)}</p></div>` : ""}
             <form class="stack" method="post" action="/api/oauth/start" id="installer-form">
@@ -397,7 +427,7 @@ export function recoveryHtml({
             </form>
           </div>
         </li>
-        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">2</div><div class="step-content"><h2>Build and configure</h2><p>HQBase installs the licensed release, then continues with workspace setup.</p></div></li>
+        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">2</div><div class="step-content"><div class="step-heading"><h2>Build and configure</h2><span class="step-status">Upcoming</span></div><p>HQBase installs the licensed release, then continues with workspace setup.</p></div></li>
       </ol>
     </main>
     <script>
@@ -413,6 +443,7 @@ export function recoveryHtml({
         status.textContent = "Opening Cloudflare authorization…";
       });
     </script>`,
+    "1 / 2",
   );
 }
 
@@ -422,14 +453,12 @@ export function buildStartedHtml(buildId: string): string {
     `<main class="panel" aria-labelledby="page-title">
       <h1 id="page-title">Your licensed build has started</h1>
       <p class="lede">Cloudflare accepted the build request. HQBase Pro is not ready until that build finishes.</p>
-      <section class="status-card" aria-labelledby="build-status">
-        <div class="status-label" id="build-status">Build queued</div>
-        <p>Build <code>${escapeHtml(buildId)}</code> is preparing your licensed release. The delegated Cloudflare grant will finish domain and email setup, then revoke itself.</p>
-      </section>
-      <div class="actions section-actions">
-        <button class="button button-outline" type="button" id="check-status">Check deployment status</button>
-      </div>
-      <p class="form-status" id="build-progress" role="status" aria-live="polite">Waiting for the licensed Worker…</p>
+      <ol class="onboarding" aria-label="Pro installation progress">
+        <li class="step is-complete"><div class="step-marker" aria-hidden="true">✓</div><div class="step-content"><div class="step-heading"><h2>Purchase verified</h2><span class="step-status">Complete</span></div><p>The purchase-bound install claim was accepted.</p></div></li>
+        <li class="step is-complete"><div class="step-marker" aria-hidden="true">✓</div><div class="step-content"><div class="step-heading"><h2>Cloudflare authorized</h2><span class="step-status">Complete</span></div><p>The temporary delegated grant is stored only in this Worker.</p></div></li>
+        <li class="step is-current"><div class="step-marker" aria-hidden="true">3</div><div class="step-content"><div class="step-heading"><h2 id="build-status">Install licensed Worker</h2><span class="step-status">Current</span></div><p>Build <code>${escapeHtml(buildId)}</code> is preparing your licensed release.</p><div class="actions section-actions"><button class="button button-outline" type="button" id="check-status">Check deployment status</button></div><p class="form-status" id="build-progress" role="status" aria-live="polite">Waiting for the licensed Worker…</p></div></li>
+        <li class="step is-upcoming" aria-disabled="true"><div class="step-marker" aria-hidden="true">4</div><div class="step-content"><div class="step-heading"><h2>Configure workspace</h2><span class="step-status">Upcoming</span></div><p>Continue with domains, owner account, and shared addresses.</p></div></li>
+      </ol>
     </main>
     <script>
       const progress = document.querySelector("#build-progress");
@@ -470,6 +499,7 @@ export function buildStartedHtml(buildId: string): string {
       checkButton.addEventListener("click", () => check(true));
       timer = setTimeout(check, 2000);
     </script>`,
+    "3 / 4",
   );
 }
 
@@ -485,12 +515,9 @@ export function errorHtml({
     `${title} · HQBase Pro`,
     `<main class="panel" aria-labelledby="page-title">
       <h1 id="page-title">${escapeHtml(title)}</h1>
-      <div class="alert section-actions" role="alert"><p>${escapeHtml(message)}</p></div>
-      <div class="actions section-actions">
-        <a class="button" href="${escapeHtml(primaryHref)}">${escapeHtml(primaryLabel)}</a>
-        ${secondaryHref && secondaryLabel ? `<a class="button button-outline" href="${escapeHtml(secondaryHref)}">${escapeHtml(secondaryLabel)}</a>` : ""}
-      </div>
+      <ol class="onboarding" aria-label="Installation status"><li class="step is-failed"><div class="step-marker" aria-hidden="true">!</div><div class="step-content"><div class="step-heading"><h2>Installation needs attention</h2><span class="step-status">Failed</span></div><div class="alert section-actions" role="alert"><p>${escapeHtml(message)}</p></div><div class="actions section-actions"><a class="button" href="${escapeHtml(primaryHref)}">${escapeHtml(primaryLabel)}</a>${secondaryHref && secondaryLabel ? `<a class="button button-outline" href="${escapeHtml(secondaryHref)}">${escapeHtml(secondaryLabel)}</a>` : ""}</div></div></li></ol>
     </main>`,
+    "Needs attention",
   );
 }
 
@@ -519,7 +546,11 @@ export function escapeHtml(value: string): string {
   );
 }
 
-function documentHtml(title: string, content: string): string {
+function documentHtml(
+  title: string,
+  content: string,
+  progress = "HQBase Pro",
+): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -530,6 +561,6 @@ function documentHtml(title: string, content: string): string {
     <title>${escapeHtml(title)}</title>
     <style>${PRODUCT_STYLES}</style>
   </head>
-  <body>${content}</body>
+  <body><div class="page-shell"><header class="product-header"><div class="brand"><span class="brand-mark" aria-hidden="true">HQ</span><span>HQBase</span></div><span class="page-progress">${escapeHtml(progress)}</span></header>${content}</div></body>
 </html>`;
 }

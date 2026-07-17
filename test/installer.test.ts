@@ -310,6 +310,12 @@ describe("Pro installer", () => {
     const html = await progress.text();
     expect(progress.status).toBe(200);
     expect(html).toContain("Your licensed build has started");
+    expect(html).toContain('class="product-header"');
+    expect(html).toContain("3 / 4");
+    expect(html).toContain("Purchase verified");
+    expect(html).toContain("Cloudflare authorized");
+    expect(html).toContain("Install licensed Worker");
+    expect(html).toContain("Configure workspace");
     expect(html).toContain(
       "HQBase Pro is not ready until that build finishes.",
     );
