@@ -177,6 +177,11 @@ describe("Pro installer", () => {
     expect(html).not.toContain("eyebrow");
     expect(html).not.toContain("HQBase Pro installer");
     expect(html).not.toContain("Inter");
+    expect(html).not.toContain('class="product-header"');
+    expect(html).toContain('class="timeline"');
+    expect(html).toContain("Purchase Pro and deploy resources");
+    expect(html).toContain("Authorize and install");
+    expect(html).toContain("Configure workspace");
     expect(html).toContain('<label class="field-label" for="license-key">');
     expect(html).toContain('aria-describedby="license-help"');
     expect(html).toContain('role="status" aria-live="polite"');
@@ -200,7 +205,7 @@ describe("Pro installer", () => {
 
     expect(response.status).toBe(400);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(html).toContain('id="form-error" role="alert"');
+    expect(html).toContain('class="field-error" id="form-error" role="alert"');
     expect(html).toContain(
       'aria-describedby="license-help form-error" aria-invalid="true"',
     );
@@ -309,15 +314,14 @@ describe("Pro installer", () => {
     );
     const html = await progress.text();
     expect(progress.status).toBe(200);
-    expect(html).toContain("Your licensed build has started");
-    expect(html).toContain('class="product-header"');
-    expect(html).toContain("3 / 4");
-    expect(html).toContain("Purchase verified");
-    expect(html).toContain("Cloudflare authorized");
-    expect(html).toContain("Install licensed Worker");
+    expect(html).toContain("Set up HQBase Pro");
+    expect(html).not.toContain('class="product-header"');
+    expect(html).toContain('class="timeline"');
+    expect(html).toContain("Purchase Pro and deploy resources");
+    expect(html).toContain("Authorize and install");
     expect(html).toContain("Configure workspace");
     expect(html).toContain(
-      "HQBase Pro is not ready until that build finishes.",
+      "Complete installation before configuring your workspace.",
     );
     expect(html).toContain("build-unsafe");
     expect(html).toContain('id="check-status"');
