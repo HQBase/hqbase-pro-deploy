@@ -17,6 +17,10 @@ Customers do not create or paste API tokens, license keys, or Worker names durin
 Manual license entry remains available only through the explicit `/recover` route for old purchases;
 claim or progress failures do not display the license form automatically.
 
+The Deploy to Cloudflare form exposes only customer-owned Worker, D1, R2, and queue names. HQBase
+OAuth configuration, service endpoints, release trust material, version metadata, and generated
+secrets are fixed or derived after the form and cannot be edited during installation.
+
 Community upgrades do not use this bootstrap. They begin and complete inside the existing Community
 workspace. Billing issues this installer only fresh-install claims; every other claim mode fails as
 invalid before Cloudflare authorization.

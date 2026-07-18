@@ -1,3 +1,4 @@
+import { hqbaseProInstallerConfig } from "./product-config";
 import { buildStartedHtml, errorHtml, htmlResponse, recoveryHtml } from "./ui";
 
 type Env = {
@@ -372,7 +373,7 @@ export async function install(
   accessToken: string,
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
-  const workerName = env.HQBASE_WORKER_NAME?.trim() ?? "";
+  const workerName = env.HQBASE_WORKER_NAME?.trim() || "hqbase-pro";
   if (!/^[a-z0-9_-]{1,63}$/i.test(workerName)) {
     return Response.json(
       {
@@ -509,16 +510,20 @@ async function cf<T = unknown>(
 }
 
 function oauthConfig(env: Env) {
-  const clientId = env.CLOUDFLARE_OAUTH_CLIENT_ID?.trim();
-  const relayUrl = env.CLOUDFLARE_OAUTH_RELAY_URL?.trim();
-  const redirectUri = env.CLOUDFLARE_OAUTH_REDIRECT_URI?.trim();
-  if (!clientId || !relayUrl || !redirectUri)
-    throw new Error("Cloudflare OAuth is not configured for this installer.");
+  const clientId =
+    env.CLOUDFLARE_OAUTH_CLIENT_ID?.trim() ||
+    hqbaseProInstallerConfig.cloudflareOAuthClientId;
+  const relayUrl =
+    env.CLOUDFLARE_OAUTH_RELAY_URL?.trim() ||
+    hqbaseProInstallerConfig.cloudflareOAuthRelayUrl;
+  const redirectUri =
+    env.CLOUDFLARE_OAUTH_REDIRECT_URI?.trim() ||
+    hqbaseProInstallerConfig.cloudflareOAuthRedirectUri;
   return { clientId, relayUrl, redirectUri };
 }
 
 function billingUrl(env: Env): string {
-  return env.HQBASE_BILLING_URL?.trim() || "https://billing.hqbase.io";
+  return env.HQBASE_BILLING_URL?.trim() || hqbaseProInstallerConfig.billingUrl;
 }
 async function encryptDraft(
   input: InstallInput,
