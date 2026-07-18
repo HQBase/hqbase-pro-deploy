@@ -29,6 +29,7 @@ describe("one-click queue bindings", () => {
     );
     expect(bindings.PRO_JOBS).toBeDefined();
     expect(bindings.PRO_JOBS_DLQ).toBeDefined();
+    expect(config).not.toHaveProperty("vars");
   });
 
   it("synchronizes consumer names selected by the one-click form", () => {

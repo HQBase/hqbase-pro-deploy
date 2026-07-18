@@ -79,6 +79,28 @@ function installationFetcher(mode: "success" | "worker" | "build") {
 }
 
 describe("Pro installer", () => {
+  it("uses compiled service endpoints without deployment variables", async () => {
+    const claim = await startInstallClaim(
+      new Request("https://custom-pro.workers.dev/api/install/start"),
+      {},
+    );
+    expect(new URL(claim.headers.get("location") ?? "").origin).toBe(
+      "https://billing.hqbase.io",
+    );
+
+    const oauth = await startOAuth(
+      new Request("https://custom-pro.workers.dev/api/oauth/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ licenseKey: "HQB_TEST_LICENSE_KEY" }),
+      }),
+      {},
+    );
+    expect(new URL(oauth.headers.get("location") ?? "").toString()).toContain(
+      "https://auth.hqbase.io/oauth/authorize",
+    );
+  });
+
   it("redirects directly through a purchase-bound install claim", async () => {
     const started = await startInstallClaim(
       new Request("https://custom-pro.workers.dev/api/install/start"),
