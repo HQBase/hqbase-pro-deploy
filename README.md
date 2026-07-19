@@ -28,6 +28,8 @@ invalid before Cloudflare authorization.
 HQBase Pro itself is governed by the HQBase Commercial Source License supplied with the licensed
 release. This bootstrap is MIT licensed.
 
+Version-specific product changes are published in [RELEASE_NOTES.md](RELEASE_NOTES.md).
+
 Pull requests and `main` run the complete quality gate and deploy dry-run. There is no vendor
 production deployment: Cloudflare clones this repository into the customer's account through the
 public deploy flow.
